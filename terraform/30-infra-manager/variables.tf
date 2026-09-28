@@ -63,6 +63,11 @@ variable "artifact_repository" {
   default = "ar-l2comm-python"
 }
 
+variable "helm_repository" {
+  type    = string
+  default = "ar-l2comm-helm"
+}
+
 variable "image_name" {
   type    = string
   default = "python-bq-batch"
