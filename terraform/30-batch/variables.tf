@@ -55,7 +55,7 @@ variable "target_dataset" {
 
 variable "target_table" {
   type    = string
-  default = "gcp_public_sample"
+  default = "gcp_region_inventory"
 }
 
 variable "schedule" {
