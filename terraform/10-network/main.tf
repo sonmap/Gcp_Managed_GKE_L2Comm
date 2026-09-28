@@ -22,9 +22,13 @@ data "google_project" "service_project" {
   project_id = var.edge_project_id
 }
 
-# Shared VPC service-project attachment is NOT created here.
-# This stage is executed directly as admin@sonmap.net and assumes that
-# gcp-prod-edp-edge-509423 has already been attached to the Shared VPC host.
+# Attach the service project to the Shared VPC host.
+# This requires compute.organizations.enableXpnResource, normally provided by
+# roles/compute.xpnAdmin at Folder or Organization level for admin@sonmap.net.
+resource "google_compute_shared_vpc_service_project" "edge" {
+  host_project    = var.host_project_id
+  service_project = var.edge_project_id
+}
 
 resource "google_compute_subnetwork" "gke" {
   project                  = var.host_project_id
@@ -43,6 +47,8 @@ resource "google_compute_subnetwork" "gke" {
     range_name    = var.service_range_name
     ip_cidr_range = var.service_cidr
   }
+
+  depends_on = [google_compute_shared_vpc_service_project.edge]
 }
 
 locals {
