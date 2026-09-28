@@ -23,6 +23,11 @@ data "google_project" "service_project" {
   project_id = var.edge_project_id
 }
 
+resource "google_compute_shared_vpc_service_project" "edge" {
+  host_project    = var.host_project_id
+  service_project = var.edge_project_id
+}
+
 resource "google_compute_subnetwork" "gke" {
   project                  = var.host_project_id
   name                     = var.subnet_name
@@ -40,10 +45,12 @@ resource "google_compute_subnetwork" "gke" {
     range_name    = var.service_range_name
     ip_cidr_range = var.service_cidr
   }
+
+  depends_on = [google_compute_shared_vpc_service_project.edge]
 }
 
 locals {
-  project_number   = data.google_project.service_project.number
+  project_number    = data.google_project.service_project.number
   gke_service_agent = "service-${local.project_number}@container-engine-robot.iam.gserviceaccount.com"
   cloud_services_sa = "${local.project_number}@cloudservices.gserviceaccount.com"
 }
