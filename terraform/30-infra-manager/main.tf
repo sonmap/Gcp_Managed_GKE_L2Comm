@@ -167,6 +167,11 @@ resource "google_service_account_iam_member" "workload_identity" {
   service_account_id = google_service_account.runtime.name
   role               = "roles/iam.workloadIdentityUser"
   member             = "serviceAccount:${var.edge_project_id}.svc.id.goog[${var.namespace}/${var.ksa_name}]"
+
+  depends_on = [
+    google_container_cluster.autopilot,
+    kubernetes_service_account_v1.runtime
+  ]
 }
 
 locals {
