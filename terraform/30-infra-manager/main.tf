@@ -6,10 +6,6 @@ terraform {
       source  = "hashicorp/google"
       version = ">= 6.0, < 8.0"
     }
-    kubernetes = {
-      source  = "hashicorp/kubernetes"
-      version = ">= 2.30, < 3.0"
-    }
   }
 }
 
@@ -24,13 +20,21 @@ provider "google" {
   region  = var.region
 }
 
-data "google_client_config" "current" {}
-
 resource "google_artifact_registry_repository" "python" {
   project       = var.edge_project_id
   location      = var.region
   repository_id = var.artifact_repository
   description   = "L2Comm Python batch images"
+  format        = "DOCKER"
+}
+
+# Helm charts are stored as OCI artifacts in Artifact Registry.
+# This keeps Helm deployment independent from public Helm repositories/NAT.
+resource "google_artifact_registry_repository" "helm" {
+  project       = var.edge_project_id
+  location      = var.region
+  repository_id = var.helm_repository
+  description   = "L2Comm offline OCI Helm charts"
   format        = "DOCKER"
 }
 
@@ -139,43 +143,19 @@ resource "google_container_cluster" "autopilot" {
   deletion_protection = false
 }
 
-provider "kubernetes" {
-  host                   = "https://${google_container_cluster.autopilot.endpoint}"
-  token                  = data.google_client_config.current.access_token
-  cluster_ca_certificate = base64decode(google_container_cluster.autopilot.master_auth[0].cluster_ca_certificate)
-}
-
-resource "kubernetes_namespace_v1" "batch" {
-  metadata {
-    name = var.namespace
-  }
-
-  depends_on = [google_container_cluster.autopilot]
-}
-
-resource "kubernetes_service_account_v1" "runtime" {
-  metadata {
-    name      = var.ksa_name
-    namespace = kubernetes_namespace_v1.batch.metadata[0].name
-    annotations = {
-      "iam.gke.io/gcp-service-account" = google_service_account.runtime.email
-    }
-  }
-}
-
+# Workload Identity IAM can be created without contacting the private
+# Kubernetes API. The matching KSA is created later by the local Helm chart.
 resource "google_service_account_iam_member" "workload_identity" {
   service_account_id = google_service_account.runtime.name
   role               = "roles/iam.workloadIdentityUser"
   member             = "serviceAccount:${var.edge_project_id}.svc.id.goog[${var.namespace}/${var.ksa_name}]"
 
-  depends_on = [
-    google_container_cluster.autopilot,
-    kubernetes_service_account_v1.runtime
-  ]
+  depends_on = [google_container_cluster.autopilot]
 }
 
 locals {
-  image_uri = "${var.region}-docker.pkg.dev/${var.edge_project_id}/${var.artifact_repository}/${var.image_name}:${var.image_tag}"
+  image_uri    = "${var.region}-docker.pkg.dev/${var.edge_project_id}/${var.artifact_repository}/${var.image_name}:${var.image_tag}"
+  helm_oci_uri = "oci://${var.region}-docker.pkg.dev/${var.edge_project_id}/${var.helm_repository}"
 }
 
 resource "google_workflows_workflow" "gke_batch" {
@@ -189,8 +169,8 @@ resource "google_workflows_workflow" "gke_batch" {
     edge_project_id = var.edge_project_id
     region          = var.region
     cluster_name    = google_container_cluster.autopilot.name
-    namespace       = kubernetes_namespace_v1.batch.metadata[0].name
-    ksa_name        = kubernetes_service_account_v1.runtime.metadata[0].name
+    namespace       = var.namespace
+    ksa_name        = var.ksa_name
     image_uri       = local.image_uri
     target_project  = var.data_project_id
     target_dataset  = var.target_dataset
@@ -206,8 +186,12 @@ output "artifact_image" {
   value = local.image_uri
 }
 
+output "helm_oci_repository" {
+  value = local.helm_oci_uri
+}
+
 output "namespace" {
-  value = kubernetes_namespace_v1.batch.metadata[0].name
+  value = var.namespace
 }
 
 output "runtime_service_account" {
