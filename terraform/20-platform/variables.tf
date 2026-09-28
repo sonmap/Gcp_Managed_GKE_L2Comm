@@ -13,6 +13,11 @@ variable "data_project_id" {
   default = "pjt-c-admin"
 }
 
+variable "target_dataset" {
+  type    = string
+  default = "dlk_sample"
+}
+
 variable "region" {
   type    = string
   default = "asia-northeast3"
@@ -61,6 +66,11 @@ variable "image_name" {
 variable "image_tag" {
   type    = string
   default = "v1"
+}
+
+variable "vm_service_account" {
+  type    = string
+  default = "620081195575-compute@developer.gserviceaccount.com"
 }
 
 variable "tf_admin_service_account" {
