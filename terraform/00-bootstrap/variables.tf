@@ -27,3 +27,8 @@ variable "vm_service_account" {
   type    = string
   default = "620081195575-compute@developer.gserviceaccount.com"
 }
+
+variable "tfstate_bucket_name" {
+  type    = string
+  default = "gcp-prod-edp-edge-509423-l2comm-tfstate"
+}
