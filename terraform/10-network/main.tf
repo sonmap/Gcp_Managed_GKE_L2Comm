@@ -9,9 +9,8 @@ terraform {
 }
 
 provider "google" {
-  project                     = var.host_project_id
-  region                      = var.region
-  impersonate_service_account = var.tf_admin_service_account
+  project = var.host_project_id
+  region  = var.region
 }
 
 data "google_compute_network" "shared_vpc" {
@@ -23,11 +22,9 @@ data "google_project" "service_project" {
   project_id = var.edge_project_id
 }
 
-# NOTE:
-# Attaching the service project to the Shared VPC host requires
-# compute.organizations.enableXpnResource, which comes from roles/compute.xpnAdmin
-# granted at Folder/Organization level. That one-time attachment is intentionally
-# kept outside this project-level Terraform stage.
+# Shared VPC service-project attachment is NOT created here.
+# This stage is executed directly as admin@sonmap.net and assumes that
+# gcp-prod-edp-edge-509423 has already been attached to the Shared VPC host.
 
 resource "google_compute_subnetwork" "gke" {
   project                  = var.host_project_id
