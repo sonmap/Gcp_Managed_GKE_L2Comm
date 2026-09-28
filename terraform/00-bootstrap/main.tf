@@ -64,7 +64,6 @@ locals {
   deploy_host_roles = toset([
     "roles/compute.networkAdmin",
     "roles/compute.securityAdmin",
-    "roles/compute.xpnAdmin",
     "roles/resourcemanager.projectIamAdmin",
     "roles/serviceusage.serviceUsageAdmin"
   ])
