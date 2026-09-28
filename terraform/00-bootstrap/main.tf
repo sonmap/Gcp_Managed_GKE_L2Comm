@@ -72,6 +72,7 @@ locals {
   # Execution permissions used only by Infrastructure Manager for 30-infra-manager.
   inframgr_roles = toset([
     "roles/artifactregistry.admin",
+    "roles/compute.viewer",
     "roles/config.agent",
     "roles/container.admin",
     "roles/iam.serviceAccountAdmin",
