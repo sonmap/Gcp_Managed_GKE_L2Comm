@@ -53,6 +53,12 @@ resource "google_project_iam_member" "runtime_job_user" {
   member  = "serviceAccount:${google_service_account.runtime.email}"
 }
 
+resource "google_project_iam_member" "runtime_compute_viewer" {
+  project = var.edge_project_id
+  role    = "roles/compute.viewer"
+  member  = "serviceAccount:${google_service_account.runtime.email}"
+}
+
 resource "google_project_iam_member" "runtime_data_editor" {
   provider = google.data
   project  = var.data_project_id
