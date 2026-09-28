@@ -7,7 +7,7 @@ GKE Autopilot에서 Python 배치 Job을 실행하는 PoC입니다.
 - Shared VPC Host Project: `gcp-prod-edp-hub-vpchost`
 - Existing VPC: `vpc-prod-edp-hub`
 - Service/Workload Project: `gcp-prod-edp-edge-509423`
-- BigQuery target: `pjt-c-admin.dlk_sample`
+- BigQuery target: `pjt-c-admin.dlk_sample.gcp_region_inventory`
 - Region: `asia-northeast3`
 - GKE mode: Autopilot
 
@@ -22,21 +22,29 @@ GKE Autopilot에서 Python 배치 Job을 실행하는 PoC입니다.
 
 | Stage | Run method | Purpose |
 |---|---|---|
-| `00-bootstrap` | VM, bootstrap as `admin@sonmap.net` | APIs, delegated Terraform SA, Infra Manager SA, IAM |
-| `10-network` | VM, delegated SA impersonation | Shared VPC subnet + GKE Shared VPC IAM |
-| `20-platform` | VM, delegated SA impersonation | GKE Autopilot, Artifact Registry, runtime/build/workflow SAs |
-| `21-app` | VM, delegated SA impersonation | Namespace/KSA and initial Cloud Build image build |
+| `00-bootstrap` | VM / `admin@sonmap.net` | APIs, delegated Terraform SA, Infra Manager SA, IAM |
+| `10-network` | VM / `admin@sonmap.net` -> `sa-l2comm-tf-admin` impersonation | Attach Shared VPC service project, GKE subnet, Shared VPC IAM |
+| `20-platform` | VM / `admin@sonmap.net` -> `sa-l2comm-tf-admin` impersonation | GKE Autopilot, Artifact Registry, runtime/build/workflow SAs |
+| `21-app` | VM / `admin@sonmap.net` -> `sa-l2comm-tf-admin` impersonation | Namespace, KSA, Workload Identity binding |
 | `30-batch` | Infrastructure Manager | Workflow + Cloud Scheduler |
 
 ## Authentication model
 
-The execution VM uses:
+Execution VM attached service account:
 
 `620081195575-compute@developer.gserviceaccount.com`
 
-`00-bootstrap` is the only bootstrap stage intended to be run with `admin@sonmap.net`. It creates `sa-l2comm-tf-admin` and grants both the VM service account and `admin@sonmap.net` permission to impersonate it. Stages 10/20/21 then use service-account impersonation instead of carrying admin credentials on the VM.
+Bootstrap creates:
 
-Infrastructure Manager executes stage 30 using `sa-l2comm-inframgr`.
+- `sa-l2comm-tf-admin@gcp-prod-edp-edge-509423.iam.gserviceaccount.com`
+- `sa-l2comm-inframgr@gcp-prod-edp-edge-509423.iam.gserviceaccount.com`
+- `sa-l2comm-runtime@gcp-prod-edp-edge-509423.iam.gserviceaccount.com`
+- `sa-l2comm-workflow@gcp-prod-edp-edge-509423.iam.gserviceaccount.com`
+- `sa-l2comm-cloudbuild@gcp-prod-edp-edge-509423.iam.gserviceaccount.com`
+
+Stages 00/10/20/21 are initiated from `admin@sonmap.net`. Stages 10/20/21 immediately delegate Terraform permissions to `sa-l2comm-tf-admin`, so administrator credentials are not embedded in Terraform configuration/state. The VM service account is also allowed to impersonate this delegated SA for recovery/automation.
+
+Stage 30 is executed by Infrastructure Manager using `sa-l2comm-inframgr`.
 
 ## Runtime flow
 
@@ -50,27 +58,32 @@ Scheduled execution
   -> Workflow
   -> gke.create_job
   -> Kubernetes Job
-  -> Autopilot creates Pod
+  -> GKE Autopilot creates Pod
   -> Pod pulls Artifact Registry image
   -> python main.py
-  -> public BigQuery sample query
-  -> pjt-c-admin.dlk_sample.gcp_public_sample
+  -> Compute Regions API lists Google Cloud region metadata
+  -> pjt-c-admin.dlk_sample.gcp_region_inventory
 ```
 
 ## Apply order
 
 ```bash
-cd terraform/00-bootstrap && terraform init && terraform apply
-cd ../10-network && terraform init && terraform apply
-cd ../20-platform && terraform init && terraform apply
-cd ../21-app && terraform init && terraform apply
+# 00 as admin@sonmap.net
+bash scripts/apply-00-as-admin.sh
 
-# Build the first image
-cd ../../
+# 10/20/21 initiated as admin@sonmap.net and delegated to sa-l2comm-tf-admin
+bash scripts/apply-10-21.sh
+
+# Build Python container once/source change only
 bash scripts/build-image.sh
 
-# Stage 30 is deployed by Infrastructure Manager.
+# 30 through Infrastructure Manager
 bash scripts/deploy-infra-manager-30.sh
 ```
 
-> Review IAM and CIDRs before production use. The IAM roles in this PoC are intentionally operationally simple and should be narrowed after validation.
+## Important
+
+- `pjt-c-admin.dlk_sample` must already exist.
+- Stage 10 creates `subnet-prod-edp-l2comm-gke-an3` inside existing `vpc-prod-edp-hub`; it does not create a new VPC.
+- The first image build must finish before Scheduler executes the workflow.
+- The PoC grants broad bootstrap permissions to `sa-l2comm-tf-admin`; narrow them after validation.
