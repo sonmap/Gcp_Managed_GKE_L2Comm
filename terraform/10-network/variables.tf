@@ -47,8 +47,3 @@ variable "service_cidr" {
   type    = string
   default = "10.254.4.0/24"
 }
-
-variable "tf_admin_service_account" {
-  type    = string
-  default = "sa-l2comm-tf-admin@gcp-prod-edp-edge-509423.iam.gserviceaccount.com"
-}
