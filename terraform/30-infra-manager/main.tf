@@ -1,5 +1,5 @@
 terraform {
-  required_version = ">= 1.6.0"
+  required_version = ">= 1.5.7"
 
   required_providers {
     google = {
@@ -130,8 +130,6 @@ resource "google_container_cluster" "autopilot" {
     master_ipv4_cidr_block  = var.control_plane_cidr
   }
 
-  # Required with private endpoint. Empty block enables Master Authorized Networks
-  # while keeping the public control-plane endpoint disabled.
   master_authorized_networks_config {}
 
   workload_identity_config {
