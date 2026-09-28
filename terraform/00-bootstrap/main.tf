@@ -44,6 +44,12 @@ locals {
     "bigquery.googleapis.com"
   ])
 
+  host_apis = toset([
+    "compute.googleapis.com",
+    "container.googleapis.com",
+    "serviceusage.googleapis.com"
+  ])
+
   deploy_edge_roles = toset([
     "roles/artifactregistry.admin",
     "roles/cloudbuild.builds.editor",
@@ -58,6 +64,7 @@ locals {
   deploy_host_roles = toset([
     "roles/compute.networkAdmin",
     "roles/compute.securityAdmin",
+    "roles/compute.xpnAdmin",
     "roles/resourcemanager.projectIamAdmin",
     "roles/serviceusage.serviceUsageAdmin"
   ])
@@ -78,10 +85,11 @@ resource "google_project_service" "edge" {
   disable_on_destroy = false
 }
 
-resource "google_project_service" "host_compute" {
+resource "google_project_service" "host" {
   provider           = google.host
+  for_each           = local.host_apis
   project            = var.host_project_id
-  service            = "compute.googleapis.com"
+  service            = each.value
   disable_on_destroy = false
 }
 
