@@ -59,11 +59,12 @@ resource "google_project_iam_member" "runtime_compute_viewer" {
   member  = "serviceAccount:${google_service_account.runtime.email}"
 }
 
-resource "google_project_iam_member" "runtime_data_editor" {
-  provider = google.data
-  project  = var.data_project_id
-  role     = "roles/bigquery.dataEditor"
-  member   = "serviceAccount:${google_service_account.runtime.email}"
+resource "google_bigquery_dataset_iam_member" "runtime_data_editor" {
+  provider   = google.data
+  project    = var.data_project_id
+  dataset_id = var.target_dataset
+  role       = "roles/bigquery.dataEditor"
+  member     = "serviceAccount:${google_service_account.runtime.email}"
 }
 
 resource "google_project_iam_member" "workflow_container_developer" {
@@ -100,6 +101,14 @@ resource "google_service_account_iam_member" "tf_admin_can_use_cloudbuild" {
   service_account_id = google_service_account.cloudbuild.name
   role               = "roles/iam.serviceAccountUser"
   member             = "serviceAccount:${var.tf_admin_service_account}"
+}
+
+resource "google_artifact_registry_repository_iam_member" "gke_node_reader" {
+  project    = var.edge_project_id
+  location   = var.region
+  repository = google_artifact_registry_repository.python.name
+  role       = "roles/artifactregistry.reader"
+  member     = "serviceAccount:${var.vm_service_account}"
 }
 
 resource "google_container_cluster" "autopilot" {
