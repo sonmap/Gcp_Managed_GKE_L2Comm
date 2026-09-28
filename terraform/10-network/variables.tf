@@ -10,7 +10,7 @@ variable "host_project_id" {
 
 variable "region" {
   type    = string
-  default = "asia-northeast3"
+  default = "asia-northeast1"
 }
 
 variable "network_name" {
@@ -20,7 +20,7 @@ variable "network_name" {
 
 variable "subnet_name" {
   type    = string
-  default = "subnet-prod-edp-l2comm-gke-an3"
+  default = "subnet-prod-edp-l2comm-gke-an1"
 }
 
 variable "node_cidr" {
@@ -30,7 +30,7 @@ variable "node_cidr" {
 
 variable "pod_range_name" {
   type    = string
-  default = "pods-prod-edp-l2comm-an3"
+  default = "pods-prod-edp-l2comm-an1"
 }
 
 variable "pod_cidr" {
@@ -40,7 +40,7 @@ variable "pod_cidr" {
 
 variable "service_range_name" {
   type    = string
-  default = "services-prod-edp-l2comm-an3"
+  default = "services-prod-edp-l2comm-an1"
 }
 
 variable "service_cidr" {
