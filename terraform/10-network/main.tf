@@ -23,10 +23,11 @@ data "google_project" "service_project" {
   project_id = var.edge_project_id
 }
 
-resource "google_compute_shared_vpc_service_project" "edge" {
-  host_project    = var.host_project_id
-  service_project = var.edge_project_id
-}
+# NOTE:
+# Attaching the service project to the Shared VPC host requires
+# compute.organizations.enableXpnResource, which comes from roles/compute.xpnAdmin
+# granted at Folder/Organization level. That one-time attachment is intentionally
+# kept outside this project-level Terraform stage.
 
 resource "google_compute_subnetwork" "gke" {
   project                  = var.host_project_id
@@ -45,8 +46,6 @@ resource "google_compute_subnetwork" "gke" {
     range_name    = var.service_range_name
     ip_cidr_range = var.service_cidr
   }
-
-  depends_on = [google_compute_shared_vpc_service_project.edge]
 }
 
 locals {
