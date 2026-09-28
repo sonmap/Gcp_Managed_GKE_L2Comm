@@ -28,8 +28,10 @@ provider "google" {
 locals {
   edge_apis = toset([
     "artifactregistry.googleapis.com",
+    "bigquery.googleapis.com",
     "cloudbuild.googleapis.com",
     "cloudresourcemanager.googleapis.com",
+    "cloudscheduler.googleapis.com",
     "compute.googleapis.com",
     "config.googleapis.com",
     "container.googleapis.com",
@@ -38,10 +40,9 @@ locals {
     "logging.googleapis.com",
     "monitoring.googleapis.com",
     "serviceusage.googleapis.com",
+    "storage.googleapis.com",
     "workflows.googleapis.com",
-    "workflowexecutions.googleapis.com",
-    "cloudscheduler.googleapis.com",
-    "bigquery.googleapis.com"
+    "workflowexecutions.googleapis.com"
   ])
 
   host_apis = toset([
@@ -69,11 +70,11 @@ locals {
   ])
 
   inframgr_roles = toset([
-    "roles/config.agent",
-    "roles/workflows.admin",
     "roles/cloudscheduler.admin",
+    "roles/config.agent",
     "roles/iam.serviceAccountUser",
-    "roles/logging.viewer"
+    "roles/logging.viewer",
+    "roles/workflows.admin"
   ])
 }
 
@@ -92,6 +93,20 @@ resource "google_project_service" "host" {
   disable_on_destroy = false
 }
 
+resource "google_storage_bucket" "tfstate" {
+  project                     = var.edge_project_id
+  name                        = var.tfstate_bucket_name
+  location                    = var.region
+  uniform_bucket_level_access = true
+  force_destroy               = false
+
+  versioning {
+    enabled = true
+  }
+
+  depends_on = [google_project_service.edge]
+}
+
 resource "google_service_account" "tf_admin" {
   project      = var.edge_project_id
   account_id   = "sa-l2comm-tf-admin"
@@ -104,6 +119,18 @@ resource "google_service_account" "inframgr" {
   account_id   = "sa-l2comm-inframgr"
   display_name = "L2Comm Infrastructure Manager execution SA"
   depends_on   = [google_project_service.edge]
+}
+
+resource "google_storage_bucket_iam_member" "tf_admin_state_admin" {
+  bucket = google_storage_bucket.tfstate.name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.tf_admin.email}"
+}
+
+resource "google_storage_bucket_iam_member" "admin_state_admin" {
+  bucket = google_storage_bucket.tfstate.name
+  role   = "roles/storage.objectAdmin"
+  member = "user:${var.admin_user}"
 }
 
 resource "google_project_iam_member" "tf_admin_edge" {
