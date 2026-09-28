@@ -66,6 +66,12 @@ resource "google_project_iam_member" "workflow_container_developer" {
   member  = "serviceAccount:${google_service_account.workflow.email}"
 }
 
+resource "google_project_iam_member" "workflow_invoker" {
+  project = var.edge_project_id
+  role    = "roles/workflows.invoker"
+  member  = "serviceAccount:${google_service_account.workflow.email}"
+}
+
 resource "google_project_iam_member" "cloudbuild_ar_writer" {
   project = var.edge_project_id
   role    = "roles/artifactregistry.writer"
