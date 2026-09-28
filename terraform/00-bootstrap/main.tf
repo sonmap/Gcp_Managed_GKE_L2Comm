@@ -69,11 +69,15 @@ locals {
     "roles/serviceusage.serviceUsageAdmin"
   ])
 
+  # Execution permissions used only by Infrastructure Manager for 30-infra-manager.
   inframgr_roles = toset([
-    "roles/cloudscheduler.admin",
+    "roles/artifactregistry.admin",
     "roles/config.agent",
+    "roles/container.admin",
+    "roles/iam.serviceAccountAdmin",
     "roles/iam.serviceAccountUser",
     "roles/logging.viewer",
+    "roles/resourcemanager.projectIamAdmin",
     "roles/workflows.admin"
   ])
 }
@@ -171,6 +175,20 @@ resource "google_project_iam_member" "inframgr_project_roles" {
   for_each = local.inframgr_roles
   project  = var.edge_project_id
   role     = each.value
+  member   = "serviceAccount:${google_service_account.inframgr.email}"
+}
+
+resource "google_project_iam_member" "inframgr_host_network_user" {
+  provider = google.host
+  project  = var.host_project_id
+  role     = "roles/compute.networkUser"
+  member   = "serviceAccount:${google_service_account.inframgr.email}"
+}
+
+resource "google_project_iam_member" "inframgr_data_bq" {
+  provider = google.data
+  project  = var.data_project_id
+  role     = "roles/bigquery.admin"
   member   = "serviceAccount:${google_service_account.inframgr.email}"
 }
 
