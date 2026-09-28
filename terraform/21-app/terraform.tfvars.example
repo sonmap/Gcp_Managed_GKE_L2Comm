@@ -1,7 +1,0 @@
-edge_project_id          = "gcp-prod-edp-edge-509423"
-region                   = "asia-northeast3"
-cluster_name             = "gke-l2comm-batch-an3"
-namespace                = "l2comm-batch"
-ksa_name                 = "ksa-l2comm-batch"
-runtime_service_account  = "sa-l2comm-runtime@gcp-prod-edp-edge-509423.iam.gserviceaccount.com"
-tf_admin_service_account = "sa-l2comm-tf-admin@gcp-prod-edp-edge-509423.iam.gserviceaccount.com"
