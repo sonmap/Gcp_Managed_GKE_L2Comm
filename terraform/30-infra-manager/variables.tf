@@ -53,6 +53,12 @@ variable "control_plane_cidr" {
   default = "10.254.5.0/28"
 }
 
+variable "master_authorized_cidr" {
+  type        = string
+  description = "CIDR allowed to access the private GKE control plane"
+  default     = "172.32.10.2/32"
+}
+
 variable "cluster_name" {
   type    = string
   default = "gke-l2comm-batch-an3"
