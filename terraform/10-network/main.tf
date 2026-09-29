@@ -13,6 +13,20 @@ provider "google" {
   region  = var.region
 }
 
+provider "google" {
+  alias   = "edge"
+  project = var.edge_project_id
+  region  = var.region
+}
+
+# Enable APIs required by later stages.
+resource "google_project_service" "cloudscheduler" {
+  provider           = google.edge
+  project            = var.edge_project_id
+  service            = "cloudscheduler.googleapis.com"
+  disable_on_destroy = false
+}
+
 data "google_compute_network" "shared_vpc" {
   project = var.host_project_id
   name    = var.network_name
