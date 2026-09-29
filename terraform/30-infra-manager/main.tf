@@ -104,14 +104,24 @@ resource "google_project_iam_member" "cloudbuild_storage_viewer" {
   member  = "serviceAccount:${google_service_account.cloudbuild.email}"
 }
 
+# 30-infra-manager owns the Cloud Build trigger.
+# After the trigger exists, a push to main that changes app/, cloudbuild/,
+# or terraform/30-infra-manager/ automatically builds and pushes the image.
+# No separate `gcloud builds triggers run` command is required for normal changes.
 resource "google_cloudbuild_trigger" "python_image" {
   project     = var.edge_project_id
   location    = var.region
   name        = var.cloudbuild_trigger_name
-  description = "Build L2Comm Python batch image and push it to Artifact Registry"
+  description = "Auto-build L2Comm Python image on main updates"
   filename    = "cloudbuild/cloudbuild.yaml"
 
   service_account = google_service_account.cloudbuild.id
+
+  included_files = [
+    "app/**",
+    "cloudbuild/**",
+    "terraform/30-infra-manager/**"
+  ]
 
   repository_event_config {
     repository = "projects/${var.edge_project_id}/locations/${var.region}/connections/${var.cloudbuild_connection_name}/repositories/${var.cloudbuild_repository_name}"
