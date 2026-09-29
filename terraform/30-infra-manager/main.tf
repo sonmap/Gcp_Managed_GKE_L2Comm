@@ -132,11 +132,12 @@ resource "google_container_cluster" "autopilot" {
     master_ipv4_cidr_block  = var.control_plane_cidr
   }
 
+  # infra-son01 is on 172.32.10.0/24, which is not RFC1918.
+  # GKE rejects that CIDR when authorized-network enforcement is enabled
+  # for the private endpoint, so keep the endpoint private but do not enforce
+  # Master Authorized Networks on the private endpoint.
   master_authorized_networks_config {
-    cidr_blocks {
-      cidr_block   = var.master_authorized_cidr
-      display_name = "infra-son01"
-    }
+    private_endpoint_enforcement_enabled = false
   }
 
   workload_identity_config {
