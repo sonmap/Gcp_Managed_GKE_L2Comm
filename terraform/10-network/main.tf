@@ -53,6 +53,14 @@ resource "google_project_iam_member" "cloudbuild_p4sa_secretmanager_admin" {
   depends_on = [google_project_service.secretmanager]
 }
 
+# Infrastructure Manager must be able to create/update Cloud Build triggers.
+resource "google_project_iam_member" "inframgr_cloudbuild_editor" {
+  provider = google.edge
+  project  = var.edge_project_id
+  role     = "roles/cloudbuild.builds.editor"
+  member   = "serviceAccount:${var.inframgr_service_account}"
+}
+
 # Attach the service project to the Shared VPC host.
 # This requires compute.organizations.enableXpnResource, normally provided by
 # roles/compute.xpnAdmin at Folder or Organization level for admin@sonmap.net.
