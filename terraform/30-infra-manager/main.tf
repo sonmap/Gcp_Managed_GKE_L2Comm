@@ -104,6 +104,31 @@ resource "google_project_iam_member" "cloudbuild_storage_viewer" {
   member  = "serviceAccount:${google_service_account.cloudbuild.email}"
 }
 
+resource "google_cloudbuild_trigger" "python_image" {
+  project     = var.edge_project_id
+  location    = var.region
+  name        = var.cloudbuild_trigger_name
+  description = "Build L2Comm Python batch image and push it to Artifact Registry"
+  filename    = "cloudbuild/cloudbuild.yaml"
+
+  service_account = google_service_account.cloudbuild.id
+
+  repository_event_config {
+    repository = "projects/${var.edge_project_id}/locations/${var.region}/connections/${var.cloudbuild_connection_name}/repositories/${var.cloudbuild_repository_name}"
+
+    push {
+      branch = "^main$"
+    }
+  }
+
+  depends_on = [
+    google_artifact_registry_repository.python,
+    google_project_iam_member.cloudbuild_ar_writer,
+    google_project_iam_member.cloudbuild_log_writer,
+    google_project_iam_member.cloudbuild_storage_viewer
+  ]
+}
+
 resource "google_project_iam_member" "autopilot_default_node_sa" {
   project = var.edge_project_id
   role    = "roles/container.defaultNodeServiceAccount"
@@ -200,6 +225,10 @@ output "artifact_image" {
 
 output "helm_oci_repository" {
   value = local.helm_oci_uri
+}
+
+output "cloudbuild_trigger_name" {
+  value = google_cloudbuild_trigger.python_image.name
 }
 
 output "namespace" {
