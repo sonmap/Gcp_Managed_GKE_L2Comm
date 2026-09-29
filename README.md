@@ -18,12 +18,12 @@ admin@sonmap.net
    |     +-- Shared VPC IAM
    |
    +-- Infrastructure Manager deployment
-         deployment location: asia-northeast3 (기존 state 유지)
+         deployment location: asia-northeast3
          execution SA: sa-l2comm-inframgr
          source: terraform/30-infra-manager
               |
-              +-- target region: asia-northeast1
-              +-- GKE Autopilot: gke-l2comm-batch-an1
+              +-- target region: asia-northeast3
+              +-- GKE Autopilot: gke-l2comm-batch-an3
               +-- Artifact Registry: ar-l2comm-python
               +-- Artifact Registry: ar-l2comm-helm
               +-- Runtime / Workflow / Cloud Build SA
@@ -63,9 +63,9 @@ Workflow
 | BigQuery Project | `pjt-c-admin` |
 | BigQuery Dataset | `dlk_sample` |
 | BigQuery Table | `gcp_region_inventory` |
-| GKE Target Region | `asia-northeast1` |
-| GKE Cluster | `gke-l2comm-batch-an1` |
-| GKE Subnet | `subnet-prod-edp-l2comm-gke-an1` |
+| GKE Target Region | `asia-northeast3` |
+| GKE Cluster | `gke-l2comm-batch-an3` |
+| GKE Subnet | `subnet-prod-edp-l2comm-gke-an3` |
 
 ### GKE CIDR
 
@@ -184,13 +184,13 @@ helm/l2comm-batch
 Container Image는 아래 Artifact Registry를 사용합니다.
 
 ```text
-asia-northeast1-docker.pkg.dev/gcp-prod-edp-edge-509423/ar-l2comm-python/python-bq-batch:v1
+asia-northeast3-docker.pkg.dev/gcp-prod-edp-edge-509423/ar-l2comm-python/python-bq-batch:v1
 ```
 
 Helm OCI 저장소:
 
 ```text
-oci://asia-northeast1-docker.pkg.dev/gcp-prod-edp-edge-509423/ar-l2comm-helm
+oci://asia-northeast3-docker.pkg.dev/gcp-prod-edp-edge-509423/ar-l2comm-helm
 ```
 
 ## 7. 적용 순서
@@ -215,8 +215,7 @@ terraform apply
 
 ### 3) Infrastructure Manager
 
-기존 deployment state를 유지하기 위해 Infrastructure Manager deployment 위치는 `asia-northeast3`를 계속 사용합니다.
-생성 대상 GKE/AR/Workflow 리전은 Terraform 변수의 `asia-northeast1`입니다.
+Infrastructure Manager deployment와 생성 대상 GKE/AR/Workflow 모두 `asia-northeast3`를 사용합니다.
 
 ```bash
 gcloud infra-manager deployments apply \
