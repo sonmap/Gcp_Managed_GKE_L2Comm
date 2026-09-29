@@ -104,12 +104,20 @@ resource "google_project_iam_member" "cloudbuild_storage_viewer" {
   member  = "serviceAccount:${google_service_account.cloudbuild.email}"
 }
 
-resource "google_artifact_registry_repository_iam_member" "gke_node_reader" {
+resource "google_artifact_registry_repository_iam_member" "vm_reader" {
   project    = var.edge_project_id
   location   = var.region
   repository = google_artifact_registry_repository.python.name
   role       = "roles/artifactregistry.reader"
   member     = "serviceAccount:${var.vm_service_account}"
+}
+
+resource "google_artifact_registry_repository_iam_member" "autopilot_node_reader" {
+  project    = var.edge_project_id
+  location   = var.region
+  repository = google_artifact_registry_repository.python.name
+  role       = "roles/artifactregistry.reader"
+  member     = "serviceAccount:${var.autopilot_node_service_account}"
 }
 
 resource "google_container_cluster" "autopilot" {
@@ -132,10 +140,6 @@ resource "google_container_cluster" "autopilot" {
     master_ipv4_cidr_block  = var.control_plane_cidr
   }
 
-  # infra-son01 is on 172.32.10.0/24, which is not RFC1918.
-  # GKE rejects that CIDR when authorized-network enforcement is enabled
-  # for the private endpoint, so keep the endpoint private but do not enforce
-  # Master Authorized Networks on the private endpoint.
   master_authorized_networks_config {
     private_endpoint_enforcement_enabled = false
   }
