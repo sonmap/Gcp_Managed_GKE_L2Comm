@@ -25,10 +25,12 @@ main:
         except:
           as: e
           steps:
-            - ignore_namespace_exists:
+            - check_namespace_exists:
                 switch:
                   - condition: $${e.code == 409}
                     next: ensure_ksa
+                next: raise_namespace_error
+            - raise_namespace_error:
                 raise: $${e}
 
     - ensure_ksa:
@@ -50,10 +52,12 @@ main:
         except:
           as: e
           steps:
-            - ignore_ksa_exists:
+            - check_ksa_exists:
                 switch:
                   - condition: $${e.code == 409}
                     next: create_job
+                next: raise_ksa_error
+            - raise_ksa_error:
                 raise: $${e}
 
     - create_job:
