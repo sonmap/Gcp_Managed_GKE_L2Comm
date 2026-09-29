@@ -27,6 +27,13 @@ resource "google_project_service" "cloudscheduler" {
   disable_on_destroy = false
 }
 
+resource "google_project_service" "secretmanager" {
+  provider           = google.edge
+  project            = var.edge_project_id
+  service            = "secretmanager.googleapis.com"
+  disable_on_destroy = false
+}
+
 data "google_compute_network" "shared_vpc" {
   project = var.host_project_id
   name    = var.network_name
