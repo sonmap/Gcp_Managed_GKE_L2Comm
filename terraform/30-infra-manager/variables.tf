@@ -97,3 +97,9 @@ variable "vm_service_account" {
   type    = string
   default = "620081195575-compute@developer.gserviceaccount.com"
 }
+
+variable "autopilot_node_service_account" {
+  type        = string
+  description = "Service account used by GKE Autopilot nodes to pull images"
+  default     = "541022739403-compute@developer.gserviceaccount.com"
+}
