@@ -25,7 +25,7 @@ variable "target_table" {
 
 variable "region" {
   type    = string
-  default = "asia-northeast1"
+  default = "asia-northeast3"
 }
 
 variable "network_name" {
@@ -35,17 +35,17 @@ variable "network_name" {
 
 variable "subnet_name" {
   type    = string
-  default = "subnet-prod-edp-l2comm-gke-an1"
+  default = "subnet-prod-edp-l2comm-gke-an3"
 }
 
 variable "pod_range_name" {
   type    = string
-  default = "pods-prod-edp-l2comm-an1"
+  default = "pods-prod-edp-l2comm-an3"
 }
 
 variable "service_range_name" {
   type    = string
-  default = "services-prod-edp-l2comm-an1"
+  default = "services-prod-edp-l2comm-an3"
 }
 
 variable "control_plane_cidr" {
@@ -55,7 +55,7 @@ variable "control_plane_cidr" {
 
 variable "cluster_name" {
   type    = string
-  default = "gke-l2comm-batch-an1"
+  default = "gke-l2comm-batch-an3"
 }
 
 variable "artifact_repository" {
