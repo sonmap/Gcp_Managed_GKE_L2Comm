@@ -28,8 +28,6 @@ resource "google_artifact_registry_repository" "python" {
   format        = "DOCKER"
 }
 
-# Helm charts are stored as OCI artifacts in Artifact Registry.
-# This keeps Helm deployment independent from public Helm repositories/NAT.
 resource "google_artifact_registry_repository" "helm" {
   project       = var.edge_project_id
   location      = var.region
@@ -134,7 +132,12 @@ resource "google_container_cluster" "autopilot" {
     master_ipv4_cidr_block  = var.control_plane_cidr
   }
 
-  master_authorized_networks_config {}
+  master_authorized_networks_config {
+    cidr_blocks {
+      cidr_block   = var.master_authorized_cidr
+      display_name = "infra-son01"
+    }
+  }
 
   workload_identity_config {
     workload_pool = "${var.edge_project_id}.svc.id.goog"
@@ -143,8 +146,6 @@ resource "google_container_cluster" "autopilot" {
   deletion_protection = false
 }
 
-# Workload Identity IAM can be created without contacting the private
-# Kubernetes API. The matching KSA is created later by the local Helm chart.
 resource "google_service_account_iam_member" "workload_identity" {
   service_account_id = google_service_account.runtime.name
   role               = "roles/iam.workloadIdentityUser"
