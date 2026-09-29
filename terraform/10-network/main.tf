@@ -43,6 +43,16 @@ data "google_project" "service_project" {
   project_id = var.edge_project_id
 }
 
+# Cloud Build 2nd-gen GitHub connection stores its OAuth token in Secret Manager.
+resource "google_project_iam_member" "cloudbuild_p4sa_secretmanager_admin" {
+  provider = google.edge
+  project  = var.edge_project_id
+  role     = "roles/secretmanager.admin"
+  member   = "serviceAccount:service-${data.google_project.service_project.number}@gcp-sa-cloudbuild.iam.gserviceaccount.com"
+
+  depends_on = [google_project_service.secretmanager]
+}
+
 # Attach the service project to the Shared VPC host.
 # This requires compute.organizations.enableXpnResource, normally provided by
 # roles/compute.xpnAdmin at Folder or Organization level for admin@sonmap.net.
