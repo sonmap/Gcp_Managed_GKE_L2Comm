@@ -103,3 +103,18 @@ variable "autopilot_node_service_account" {
   description = "Service account used by GKE Autopilot nodes to pull images"
   default     = "541022739403-compute@developer.gserviceaccount.com"
 }
+
+variable "cloudbuild_connection_name" {
+  type    = string
+  default = "github-l2comm"
+}
+
+variable "cloudbuild_repository_name" {
+  type    = string
+  default = "Gcp_Managed_GKE_L2Comm"
+}
+
+variable "cloudbuild_trigger_name" {
+  type    = string
+  default = "trg-l2comm-python-image"
+}
