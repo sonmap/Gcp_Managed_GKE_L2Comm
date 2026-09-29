@@ -40,17 +40,21 @@ infra-son01
               +-- Workload Identity
                    -> sa-l2comm-runtime
 
-Workflow
+Cloud Scheduler
    |
-   +-- gke.create_job
+   +-- Workflows Executions API
          |
-         +-- Kubernetes Job
+         +-- wf-l2comm-gke-job
                |
-               +-- GKE Autopilot Pod
+               +-- gke.create_job
                      |
-                     +-- Artifact Registry image pull
-                     +-- python main.py
-                     +-- BigQuery write
+                     +-- Kubernetes Job
+                           |
+                           +-- GKE Autopilot Pod
+                                 |
+                                 +-- Artifact Registry image pull
+                                 +-- python main.py
+                                 +-- BigQuery write
 ```
 
 ## 2. 프로젝트 / 네트워크
@@ -79,13 +83,14 @@ Workflow
 GKE는 Private Autopilot이며 별도 Cloud NAT를 사용하지 않는 테스트 구조입니다.
 Container Image와 Helm OCI Repository는 Artifact Registry를 사용합니다.
 
-## 3. 현재 Terraform 단계
+## 3. 현재 적용 단계
 
 | Stage | 실행 주체 | 역할 |
 |---|---|---|
 | `terraform/00-bootstrap` | `admin@sonmap.net` | API, tfstate bucket, Terraform SA, Infra Manager SA, IAM |
 | `terraform/10-network` | `admin@sonmap.net` | Shared VPC 연결, GKE subnet, secondary range, network IAM |
 | `terraform/30-infra-manager` | Infrastructure Manager / `sa-l2comm-inframgr` | GKE, AR, Runtime SA, Workflow SA, Cloud Build SA, Workload Identity IAM, Workflow |
+| `40-scheduler` | `admin@sonmap.net` / gcloud | Cloud Scheduler 생성 및 Workflow 정기 호출 |
 
 이전 테스트용 `20-platform`, `21-app`, `30-batch`는 제거했습니다.
 `scripts/*.sh`도 제거하고 실제 명령을 직접 실행하는 방식으로 정리했습니다.
@@ -99,13 +104,17 @@ Container Image와 Helm OCI Repository는 Artifact Registry를 사용합니다.
 | `sa-l2comm-tf-admin@gcp-prod-edp-edge-509423.iam.gserviceaccount.com` | Bootstrap에서 생성되는 Terraform 관리용 SA |
 | `sa-l2comm-inframgr@gcp-prod-edp-edge-509423.iam.gserviceaccount.com` | Infrastructure Manager Terraform 실행 SA |
 | `sa-l2comm-runtime@gcp-prod-edp-edge-509423.iam.gserviceaccount.com` | GKE 업무 Pod가 Workload Identity로 사용하는 GSA |
-| `sa-l2comm-workflow@gcp-prod-edp-edge-509423.iam.gserviceaccount.com` | Workflow가 GKE Job을 생성할 때 사용하는 SA |
+| `sa-l2comm-workflow@gcp-prod-edp-edge-509423.iam.gserviceaccount.com` | Workflow 실행 SA 및 Scheduler OAuth 호출 SA |
 | `sa-l2comm-cloudbuild@gcp-prod-edp-edge-509423.iam.gserviceaccount.com` | Python Container Image Build용 SA |
 | `ksa-l2comm-batch` | GKE Namespace 내부 KSA. `sa-l2comm-runtime`과 Workload Identity 연결 |
 
 ### Identity 흐름
 
 ```text
+Cloud Scheduler
+  -> OAuth: sa-l2comm-workflow
+  -> Workflow 실행
+
 Workflow
   -> sa-l2comm-workflow
   -> GKE Kubernetes Job 생성
@@ -145,7 +154,8 @@ cloudbuild/cloudbuild.yaml
 ### Runtime
 
 ```text
-Workflow 실행
+Cloud Scheduler
+   -> Workflow 실행
    -> gke.create_job
    -> Kubernetes Job
    -> Autopilot Pod
@@ -230,6 +240,18 @@ gcloud infra-manager deployments apply \
 
 GKE가 `RUNNING` 된 뒤 `infra-son01`에서 local Helm Chart를 사용하여 Namespace/KSA를 적용합니다.
 
+### 5) 40-scheduler
+
+Cloud Scheduler는 Terraform이 아니라 gcloud 명령어로 구성합니다.
+상세 명령은 `40-scheduler/README.md`를 사용합니다.
+
+```text
+Cloud Scheduler
+  -> wf-l2comm-gke-job
+  -> GKE Job
+  -> Autopilot Pod
+```
+
 ## 8. 현재 Repository 구조
 
 ```text
@@ -247,6 +269,8 @@ Gcp_Managed_GKE_L2Comm/
 │     ├─ values.yaml
 │     └─ templates/
 │        └─ serviceaccount.yaml
+├─ 40-scheduler/
+│  └─ README.md
 └─ terraform/
    ├─ 00-bootstrap/
    ├─ 10-network/
