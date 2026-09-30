@@ -1,0 +1,237 @@
+#!/bin/bash
+
+# Test copy of /ssw/dlk/client_gke for Standard -> Autopilot target switch.
+# Main AS-IS behavior is preserved: PV -> PVC -> Pod -> wait/log -> cleanup.
+# Intentional test changes:
+#   1) KUBECONFIG can point to the new project/Autopilot cluster.
+#   2) CLIENT_COMMON can point to the repository test stub.
+#   3) DRY_RUN=1 prints manifests without creating resources.
+
+TARGET_KUBECONFIG="${TARGET_KUBECONFIG:-$HOME/.kube/config_new-autopilot}"
+export KUBECONFIG="${KUBECONFIG:-$TARGET_KUBECONFIG}"
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CLIENT_COMMON="${CLIENT_COMMON:-/ssw/dlk/client_common}"
+TARGET_NAMESPACE="${TARGET_NAMESPACE:-nms-prd}"
+TARGET_SERVICE_ACCOUNT="${TARGET_SERVICE_ACCOUNT:-nms-prd-sa}"
+NFS_SERVER="${NFS_SERVER:-10.136.209.130}"
+NFS_BASE_PATH="${NFS_BASE_PATH:-/batch_gke/l2}"
+DRY_RUN="${DRY_RUN:-0}"
+POD_STATUS_CHK_INTERVAL_SEC="${POD_STATUS_CHK_INTERVAL_SEC:-60}"
+POD_PENDING_CHK_UTMOST_CNT="${POD_PENDING_CHK_UTMOST_CNT:-2880}"
+
+if [[ ! -r "$CLIENT_COMMON" ]]; then
+  echo "CLIENT_COMMON not readable: $CLIENT_COMMON" >&2
+  echo "For repository-only test: export CLIENT_COMMON=$SCRIPT_DIR/client_common.test" >&2
+  exit 2
+fi
+# shellcheck disable=SC1090
+. "$CLIENT_COMMON"
+
+sSuffix="$(date +"%Y%m%d%H%M%S")-${RANDOM}"
+LOG_DIR_TOP="${LOG_DIR_TOP:-/tmp}"
+LOG_TMP_FILE="${LOG_TMP_FILE:-$LOG_DIR_TOP/${PROGRAM:-client_gke}-$sSuffix.log}"
+mkdir -p "$(dirname "$LOG_TMP_FILE")"
+
+action_title 2>&1 | tee -a "$LOG_TMP_FILE"
+
+print_usage() {
+  echo "Usage: client_gke --program-id <id> --docker-image <image> --gpu <n> --cpu <cores> --mem-gb <gb> --shell-command <command>"
+}
+
+if [[ $# -lt 12 ]]; then
+  print_usage | tee -a "$LOG_TMP_FILE"
+  exit 1
+fi
+
+PGM_ID=""
+DOCKER_IMAGE=""
+NEEDED_GPU_EA="0"
+NEEDED_CPU_CORES=""
+NEEDED_MEM_GB=""
+CMD_EXECUTED_IN_POD=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --program-id) PGM_ID="$2"; shift 2 ;;
+    --docker-image) DOCKER_IMAGE="$2"; shift 2 ;;
+    --gpu) NEEDED_GPU_EA="$2"; shift 2 ;;
+    --cpu) NEEDED_CPU_CORES="$2"; shift 2 ;;
+    --mem-gb) NEEDED_MEM_GB="$2"; shift 2 ;;
+    --shell-command) CMD_EXECUTED_IN_POD="$2"; shift 2 ;;
+    *) echo "Unknown argument: $1" >&2; print_usage; exit 1 ;;
+  esac
+done
+
+for v in PGM_ID DOCKER_IMAGE NEEDED_CPU_CORES NEEDED_MEM_GB CMD_EXECUTED_IN_POD; do
+  if [[ -z "${!v}" ]]; then
+    echo "Missing required value: $v" >&2
+    exit 1
+  fi
+done
+
+sPgmId="$(echo "$PGM_ID" | tr '[:upper:]_' '[:lower:]-' | tr -cd 'a-z0-9.-')"
+if [[ ${#sPgmId} -gt 36 ]]; then
+  sPgmId="${sPgmId:0:36}"
+fi
+sPgmId="${sPgmId}-${sSuffix}"
+sSbxCd="${sPgmId:5:4}"
+
+sPodNm="pod-${sPgmId}"
+sPvNm="pv-${sPgmId}"
+sPvcNm="pvc-${sPgmId}"
+
+GPU_LIMIT=""
+if [[ "$NEEDED_GPU_EA" != "0" ]]; then
+  GPU_LIMIT="        nvidia.com/gpu: ${NEEDED_GPU_EA}"
+fi
+
+read -r -d '' sYamlPv <<EOF || true
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: ${sPvNm}
+spec:
+  accessModes:
+  - ReadWriteMany
+  storageClassName: ""
+  capacity:
+    storage: 100Gi
+  nfs:
+    path: ${NFS_BASE_PATH}/${sSbxCd}
+    server: ${NFS_SERVER}
+  persistentVolumeReclaimPolicy: Retain
+EOF
+
+read -r -d '' sYamlPvc <<EOF || true
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ${sPvcNm}
+  namespace: ${TARGET_NAMESPACE}
+spec:
+  accessModes:
+  - ReadWriteMany
+  storageClassName: ""
+  resources:
+    requests:
+      storage: 100Gi
+  volumeMode: Filesystem
+  volumeName: ${sPvNm}
+EOF
+
+read -r -d '' sYamlPod <<EOF || true
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ${sPodNm}
+  labels:
+    app: ${sPgmId}
+  namespace: ${TARGET_NAMESPACE}
+spec:
+  serviceAccountName: ${TARGET_SERVICE_ACCOUNT}
+  containers:
+  - name: con-${sPgmId}
+    image: ${DOCKER_IMAGE}
+    imagePullPolicy: IfNotPresent
+    tty: true
+    env:
+    - name: PYTHONUNBUFFERED
+      value: "True"
+    resources:
+      limits:
+${GPU_LIMIT}
+        cpu: ${NEEDED_CPU_CORES}
+        memory: "${NEEDED_MEM_GB}Gi"
+    ports:
+    - containerPort: 22
+    volumeMounts:
+    - mountPath: /home/jupyter
+      name: pvc-volume
+    command: ["/bin/bash", "-c", "--"]
+    args: ["${CMD_EXECUTED_IN_POD}"]
+  volumes:
+  - name: pvc-volume
+    persistentVolumeClaim:
+      claimName: ${sPvcNm}
+  restartPolicy: Never
+EOF
+
+print_manifest() {
+  local title="$1"
+  local body="$2"
+  echo "===== $title =====" | tee -a "$LOG_TMP_FILE"
+  echo "$body" | tee -a "$LOG_TMP_FILE"
+}
+
+print_manifest "PV" "$sYamlPv"
+print_manifest "PVC" "$sYamlPvc"
+print_manifest "POD" "$sYamlPod"
+
+if [[ "$DRY_RUN" == "1" ]]; then
+  echo "DRY_RUN=1: no Kubernetes resources were created." | tee -a "$LOG_TMP_FILE"
+  exit 0
+fi
+
+echo "KUBECONFIG=$KUBECONFIG" | tee -a "$LOG_TMP_FILE"
+echo "CONTEXT=$(kubectl config current-context)" | tee -a "$LOG_TMP_FILE"
+
+cleanup() {
+  echo "$sYamlPod" | kubectl delete -f - --ignore-not-found=true >/dev/null 2>&1 || true
+  echo "$sYamlPvc" | kubectl delete -f - --ignore-not-found=true >/dev/null 2>&1 || true
+  echo "$sYamlPv" | kubectl delete -f - --ignore-not-found=true >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+
+echo "$sYamlPv" | kubectl apply -f - 2>&1 | tee -a "$LOG_TMP_FILE"
+[[ ${PIPESTATUS[1]} -eq 0 ]] || exit 1
+
+echo "$sYamlPvc" | kubectl apply -f - 2>&1 | tee -a "$LOG_TMP_FILE"
+[[ ${PIPESTATUS[1]} -eq 0 ]] || exit 1
+
+echo "$sYamlPod" | kubectl apply -f - 2>&1 | tee -a "$LOG_TMP_FILE"
+[[ ${PIPESTATUS[1]} -eq 0 ]] || exit 1
+
+kubectl get pv "$sPvNm" 2>&1 | tee -a "$LOG_TMP_FILE" || true
+kubectl describe pv "$sPvNm" 2>&1 | tee -a "$LOG_TMP_FILE" || true
+kubectl get pvc "$sPvcNm" -n "$TARGET_NAMESPACE" 2>&1 | tee -a "$LOG_TMP_FILE" || true
+kubectl describe pvc "$sPvcNm" -n "$TARGET_NAMESPACE" 2>&1 | tee -a "$LOG_TMP_FILE" || true
+
+pending_count=0
+since_time="$(date --iso-8601=ns)"
+POD_EXE_RET_VAL=1
+
+while true; do
+  phase="$(kubectl get pod "$sPodNm" -n "$TARGET_NAMESPACE" -o jsonpath='{.status.phase}' 2>/dev/null || true)"
+  echo "$(date '+%F %T') pod phase=$phase" | tee -a "$LOG_TMP_FILE"
+
+  case "$phase" in
+    Succeeded)
+      POD_EXE_RET_VAL=0
+      break
+      ;;
+    Failed)
+      POD_EXE_RET_VAL=1
+      break
+      ;;
+    Running)
+      kubectl logs "$sPodNm" -n "$TARGET_NAMESPACE" --since-time="$since_time" --timestamps=true 2>&1 | tee -a "$LOG_TMP_FILE" || true
+      since_time="$(date --iso-8601=ns)"
+      ;;
+    Pending|"")
+      pending_count=$((pending_count + 1))
+      if (( pending_count > POD_PENDING_CHK_UTMOST_CNT )); then
+        echo "Pending timeout" | tee -a "$LOG_TMP_FILE"
+        POD_EXE_RET_VAL=1
+        break
+      fi
+      ;;
+  esac
+
+  sleep "$POD_STATUS_CHK_INTERVAL_SEC"
+done
+
+kubectl logs "$sPodNm" -n "$TARGET_NAMESPACE" 2>&1 | tee -a "$LOG_TMP_FILE" || true
+kubectl describe pod "$sPodNm" -n "$TARGET_NAMESPACE" 2>&1 | tee -a "$LOG_TMP_FILE" || true
+
+exit "$POD_EXE_RET_VAL"
