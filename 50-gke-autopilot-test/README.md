@@ -1,63 +1,94 @@
 # 50 - GKE Standard -> Autopilot Target Test
 
-목적: 기존 Edge 서버의 `run-gke.sh -> /ssw/dlk/client_gke` 호출 구조를 유지하고, **KUBECONFIG 대상만 신규 프로젝트의 GKE Autopilot로 변경**하여 1차 이관 가능 여부를 확인한다.
+목적: `gcp-prod-edp-hub-vpchost` 프로젝트의 실행 VM에서 기존 `run-gke.sh -> client_gke` 구조를 유지하고, Kubernetes target만 신규 GKE Autopilot로 전환하여 1차 이관 가능 여부를 검증한다.
+
+## 대상
+
+| 구분 | 값 |
+|---|---|
+| 실행 VM 프로젝트 | `gcp-prod-edp-hub-vpchost` |
+| 대상 GKE 프로젝트 | `gcp-prod-edp-edge-509423` |
+| 대상 Cluster | `gke-l2comm-batch-an3` |
+| Region | `asia-northeast3` |
+| 테스트 Namespace | `nms-prd` |
+| Kubernetes ServiceAccount | `nms-prd-sa` |
+| kubeconfig | `$HOME/.kube/config_gke-l2comm-batch-an3` |
+
+> VM 프로젝트와 GKE 프로젝트가 달라도 문제 없다. kubeconfig에 대상 프로젝트의 GKE API endpoint/context가 저장되며, VM에서 사용하는 Google 계정 또는 Service Account가 대상 프로젝트 GKE 접근 권한을 가져야 한다.
 
 ## 구성
 
-- `setup-kubeconfig.sh` : 신규 프로젝트 Autopilot용 별도 kubeconfig 생성
+- `setup-kubeconfig.sh` : 대상 Autopilot 전용 kubeconfig 생성
+- `bootstrap-namespace.sh` : 신규 cluster에 `nms-prd`와 `nms-prd-sa` 생성
 - `precheck.sh` : context / namespace / Pod/PV/PVC 권한 확인
 - `run-gke.sh` : 기존 `run-gke.sh` 호출 형태를 유지한 테스트용 사본
-- `client_gke` : 기존 `client_gke` 흐름(PV -> PVC -> Pod -> log -> cleanup)을 유지하고 target을 환경변수로 선택 가능하게 한 테스트용 사본
-- `client_common.test` : 운영 `/ssw/dlk/client_common`이 없는 환경에서도 wrapper 흐름을 확인하기 위한 최소 stub
+- `client_gke` : 기존 `client_gke` 흐름(PV -> PVC -> Pod -> log -> cleanup)을 유지한 테스트용 사본
+- `client_common.test` : 운영 `/ssw/dlk/client_common` 없이 wrapper 흐름을 확인하기 위한 stub
 
-> 운영 파일을 직접 덮어쓰지 않는다. 먼저 이 폴더에서 신규 Autopilot target을 검증한 후 운영 `client_gke`의 KUBECONFIG 한 줄을 전환하는 방식으로 사용한다.
+운영 파일은 직접 덮어쓰지 않는다. 이 폴더에서 신규 Autopilot target 검증 후 운영 `client_gke`의 KUBECONFIG target만 전환한다.
 
-## 1. 신규 Autopilot kubeconfig 생성
+## 1. kubeconfig 생성
+
+기본 target 값은 소스에 이미 반영되어 있다.
 
 ```bash
 cd 50-gke-autopilot-test
-chmod +x setup-kubeconfig.sh precheck.sh run-gke.sh client_gke
-
-export TARGET_PROJECT_ID="<NEW_PROJECT_ID>"
-export TARGET_CLUSTER="<NEW_AUTOPILOT_CLUSTER>"
-export TARGET_REGION="asia-northeast3"
-export TARGET_KUBECONFIG="$HOME/.kube/config_new-autopilot"
+chmod +x setup-kubeconfig.sh bootstrap-namespace.sh precheck.sh run-gke.sh client_gke
 
 ./setup-kubeconfig.sh
 ```
 
-Private control plane에서 내부 Endpoint를 반드시 사용해야 하는 환경이면 `setup-kubeconfig.sh`의 `get-credentials` 명령에 `--internal-ip`를 추가한다.
-
-확인 포인트:
+실행되는 핵심 명령은 다음과 같다.
 
 ```bash
-KUBECONFIG="$HOME/.kube/config_new-autopilot" kubectl config current-context
-KUBECONFIG="$HOME/.kube/config_new-autopilot" kubectl get ns
+gcloud container clusters get-credentials gke-l2comm-batch-an3 \
+  --region asia-northeast3 \
+  --project gcp-prod-edp-edge-509423
 ```
 
-## 2. 권한 사전 점검
-
-기존 소스는 `nms-prd` namespace와 `nms-prd-sa` ServiceAccount를 사용한다.
+Private control plane의 내부 endpoint를 사용해야 하는 경우:
 
 ```bash
-export TARGET_KUBECONFIG="$HOME/.kube/config_new-autopilot"
-export TARGET_NAMESPACE="nms-prd"
+USE_INTERNAL_IP=1 ./setup-kubeconfig.sh
+```
+
+확인:
+
+```bash
+KUBECONFIG="$HOME/.kube/config_gke-l2comm-batch-an3" kubectl config current-context
+KUBECONFIG="$HOME/.kube/config_gke-l2comm-batch-an3" kubectl get ns
+```
+
+## 2. Namespace / ServiceAccount 준비
+
+Namespace는 프로젝트 자원이 아니라 **각 GKE cluster 내부 자원**이다. 따라서 신규 `gke-l2comm-batch-an3`에 `nms-prd`가 없다면 별도로 만들어야 한다. 기존 `client_gke`가 `nms-prd-sa`를 지정하므로 ServiceAccount도 신규 cluster에 필요하다.
+
+```bash
+./bootstrap-namespace.sh
+```
+
+이 스크립트는 이미 존재하면 재사용하고, 없을 때만 다음을 생성한다.
+
+```text
+namespace/nms-prd
+serviceaccount/nms-prd-sa
+```
+
+> `nms-prd-sa`가 Workload Identity로 GCP API를 호출해야 하는 업무라면 KSA 생성만으로 끝나지 않는다. GSA 연결/IAM 설정은 별도 적용한다.
+
+## 3. 권한 사전 점검
+
+```bash
 ./precheck.sh
 ```
 
-신규 클러스터에 테스트용 namespace/SA가 아직 없다면 별도 테스트 환경에서만 생성:
+Pod/PVC는 `nms-prd` namespace 권한을 확인하고, PV는 cluster-scoped 권한을 확인한다.
 
-```bash
-KUBECONFIG="$TARGET_KUBECONFIG" kubectl create namespace nms-prd
-KUBECONFIG="$TARGET_KUBECONFIG" kubectl create serviceaccount nms-prd-sa -n nms-prd
-```
-
-## 3. Manifest만 확인 (자원 생성 안 함)
+## 4. Manifest만 확인 - Kubernetes 자원 생성 안 함
 
 ```bash
 export CLIENT_COMMON="$PWD/client_common.test"
 export CLIENT_GKE="$PWD/client_gke"
-export TARGET_KUBECONFIG="$HOME/.kube/config_new-autopilot"
 export DRY_RUN=1
 
 bash ./run-gke.sh \
@@ -66,16 +97,12 @@ bash ./run-gke.sh \
   /tmp /bin/echo AUTOPILOT_DRY_RUN
 ```
 
-이 단계는 PV/PVC/Pod YAML까지만 출력하고 신규 GKE에는 아무 자원도 생성하지 않는다.
-
-## 4. 신규 Autopilot 실제 Pod 테스트
+## 5. 신규 Autopilot 실제 Pod 테스트
 
 ```bash
 unset DRY_RUN
 export CLIENT_COMMON="$PWD/client_common.test"
 export CLIENT_GKE="$PWD/client_gke"
-export TARGET_KUBECONFIG="$HOME/.kube/config_new-autopilot"
-export TARGET_NAMESPACE="nms-prd"
 export POD_STATUS_CHK_INTERVAL_SEC=5
 export POD_PENDING_CHK_UTMOST_CNT=120
 
@@ -85,29 +112,31 @@ bash ./run-gke.sh \
   /tmp /bin/echo AUTOPILOT_OK
 ```
 
-기본 Docker image는 기존 AS-IS와 동일하다.
+기본 Docker image와 NFS 설정은 AS-IS를 유지한다.
 
 ```text
+Docker image:
 asia-northeast3-docker.pkg.dev/gcp-prod-edp-edge/dlk/lgplus-deeplearning:2.3-rsvp-rsvp-001-1
+
+NFS:
+10.136.209.130
+/batch_gke/l2/...
 ```
 
-따라서 신규 프로젝트 Autopilot의 node service account가 기존 Edge 프로젝트 Artifact Registry image를 pull할 수 있어야 한다. 또한 Pod가 기존 NFS `10.136.209.130` 및 `/batch_gke/l2/...` 경로에 접근 가능해야 실제 테스트가 성공한다.
+따라서 실제 테스트에서는 신규 Autopilot의 image pull 권한과 `10.136.209.130` NFS 네트워크 접근을 함께 확인해야 한다.
 
-## 최종 운영 전환
+## 운영 전환 시 변경점
 
-테스트가 성공한 뒤 운영 `/ssw/dlk/client_gke`에서는 target만 다음과 같이 변경하면 된다.
+AS-IS:
 
-```diff
-- export KUBECONFIG=/home/$USER/.kube/config_prod-edge-cluster-3
-+ export KUBECONFIG=/home/$USER/.kube/config_new-autopilot
+```bash
+export KUBECONFIG=/home/$USER/.kube/config_prod-edge-cluster-3
+```
+
+TO-BE:
+
+```bash
+export KUBECONFIG=/home/$USER/.kube/config_gke-l2comm-batch-an3
 ```
 
 `run-gke.sh` 업무 호출부는 그대로 유지한다.
-
-## 이관 판단
-
-1. `setup-kubeconfig.sh` 성공 -> Edge 실행 서버에서 신규 프로젝트 GKE API 접근 가능
-2. `precheck.sh` 성공 -> Kubernetes Pod/PV/PVC 권한 준비 완료
-3. `DRY_RUN=1` 성공 -> 기존 parameter -> manifest 변환 정상
-4. 실제 Pod 성공 -> Artifact Registry + NFS + Autopilot 실행 호환성 확인
-5. 이후 운영 `client_gke` KUBECONFIG target만 변경하여 단계적 전환
