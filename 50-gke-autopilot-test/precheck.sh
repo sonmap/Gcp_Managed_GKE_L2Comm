@@ -1,8 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 
-TARGET_KUBECONFIG="${TARGET_KUBECONFIG:-$HOME/.kube/config_new-autopilot}"
+TARGET_KUBECONFIG="${TARGET_KUBECONFIG:-$HOME/.kube/config_gke-l2comm-batch-an3}"
 TARGET_NAMESPACE="${TARGET_NAMESPACE:-nms-prd}"
+TARGET_SERVICE_ACCOUNT="${TARGET_SERVICE_ACCOUNT:-nms-prd-sa}"
 
 export KUBECONFIG="$TARGET_KUBECONFIG"
 
@@ -42,7 +43,7 @@ done
 
 echo
 echo "== ServiceAccount =="
-kubectl get serviceaccount nms-prd-sa -n "$TARGET_NAMESPACE"
+kubectl get serviceaccount "$TARGET_SERVICE_ACCOUNT" -n "$TARGET_NAMESPACE"
 
 echo
 echo "Precheck completed."
