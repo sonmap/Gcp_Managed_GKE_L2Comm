@@ -3,11 +3,11 @@
 # Test copy of /ssw/dlk/client_gke for Standard -> Autopilot target switch.
 # Main AS-IS behavior is preserved: PV -> PVC -> Pod -> wait/log -> cleanup.
 # Intentional test changes:
-#   1) KUBECONFIG can point to the new project/Autopilot cluster.
+#   1) Default KUBECONFIG points to the new-project Autopilot cluster.
 #   2) CLIENT_COMMON can point to the repository test stub.
 #   3) DRY_RUN=1 prints manifests without creating resources.
 
-TARGET_KUBECONFIG="${TARGET_KUBECONFIG:-$HOME/.kube/config_new-autopilot}"
+TARGET_KUBECONFIG="${TARGET_KUBECONFIG:-$HOME/.kube/config_gke-l2comm-batch-an3}"
 export KUBECONFIG="${KUBECONFIG:-$TARGET_KUBECONFIG}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
