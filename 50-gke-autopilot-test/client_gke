@@ -1,11 +1,8 @@
 #!/bin/bash
 
-# Test copy of /ssw/dlk/client_gke for Standard -> Autopilot target switch.
-# Main AS-IS behavior is preserved: PV -> PVC -> Pod -> wait/log -> cleanup.
-# Intentional test changes:
-#   1) Default KUBECONFIG points to the new-project Autopilot cluster.
-#   2) CLIENT_COMMON can point to the repository test stub.
-#   3) DRY_RUN=1 prints manifests without creating resources.
+# Generic GKE target-switch test client.
+# USE_NFS=0 by default so the test does not depend on legacy storage.
+# If storage testing is required later, supply NFS_SERVER/NFS_BASE_PATH at runtime.
 
 TARGET_KUBECONFIG="${TARGET_KUBECONFIG:-$HOME/.kube/config_gke-l2comm-batch-an3}"
 export KUBECONFIG="${KUBECONFIG:-$TARGET_KUBECONFIG}"
@@ -14,11 +11,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLIENT_COMMON="${CLIENT_COMMON:-/ssw/dlk/client_common}"
 TARGET_NAMESPACE="${TARGET_NAMESPACE:-nms-prd}"
 TARGET_SERVICE_ACCOUNT="${TARGET_SERVICE_ACCOUNT:-nms-prd-sa}"
-NFS_SERVER="${NFS_SERVER:-10.136.209.130}"
-NFS_BASE_PATH="${NFS_BASE_PATH:-/batch_gke/l2}"
+USE_NFS="${USE_NFS:-0}"
+NFS_SERVER="${NFS_SERVER:-}"
+NFS_BASE_PATH="${NFS_BASE_PATH:-}"
+NFS_MOUNT_PATH="${NFS_MOUNT_PATH:-/mnt/shared}"
 DRY_RUN="${DRY_RUN:-0}"
-POD_STATUS_CHK_INTERVAL_SEC="${POD_STATUS_CHK_INTERVAL_SEC:-60}"
-POD_PENDING_CHK_UTMOST_CNT="${POD_PENDING_CHK_UTMOST_CNT:-2880}"
+KEEP_RESOURCES="${KEEP_RESOURCES:-0}"
+POD_STATUS_CHK_INTERVAL_SEC="${POD_STATUS_CHK_INTERVAL_SEC:-5}"
+POD_PENDING_CHK_UTMOST_CNT="${POD_PENDING_CHK_UTMOST_CNT:-120}"
 
 if [[ ! -r "$CLIENT_COMMON" ]]; then
   echo "CLIENT_COMMON not readable: $CLIENT_COMMON" >&2
@@ -70,12 +70,16 @@ for v in PGM_ID DOCKER_IMAGE NEEDED_CPU_CORES NEEDED_MEM_GB CMD_EXECUTED_IN_POD;
   fi
 done
 
+if [[ "$USE_NFS" == "1" && ( -z "$NFS_SERVER" || -z "$NFS_BASE_PATH" ) ]]; then
+  echo "USE_NFS=1 requires NFS_SERVER and NFS_BASE_PATH at runtime." >&2
+  exit 2
+fi
+
 sPgmId="$(echo "$PGM_ID" | tr '[:upper:]_' '[:lower:]-' | tr -cd 'a-z0-9.-')"
 if [[ ${#sPgmId} -gt 36 ]]; then
   sPgmId="${sPgmId:0:36}"
 fi
 sPgmId="${sPgmId}-${sSuffix}"
-sSbxCd="${sPgmId:5:4}"
 
 sPodNm="pod-${sPgmId}"
 sPvNm="pv-${sPgmId}"
@@ -86,7 +90,13 @@ if [[ "$NEEDED_GPU_EA" != "0" ]]; then
   GPU_LIMIT="        nvidia.com/gpu: ${NEEDED_GPU_EA}"
 fi
 
-read -r -d '' sYamlPv <<EOF || true
+sYamlPv=""
+sYamlPvc=""
+VOLUME_MOUNT_BLOCK=""
+VOLUME_BLOCK=""
+
+if [[ "$USE_NFS" == "1" ]]; then
+  read -r -d '' sYamlPv <<EOF || true
 apiVersion: v1
 kind: PersistentVolume
 metadata:
@@ -98,12 +108,12 @@ spec:
   capacity:
     storage: 100Gi
   nfs:
-    path: ${NFS_BASE_PATH}/${sSbxCd}
+    path: ${NFS_BASE_PATH}
     server: ${NFS_SERVER}
   persistentVolumeReclaimPolicy: Retain
 EOF
 
-read -r -d '' sYamlPvc <<EOF || true
+  read -r -d '' sYamlPvc <<EOF || true
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -120,6 +130,21 @@ spec:
   volumeName: ${sPvNm}
 EOF
 
+  VOLUME_MOUNT_BLOCK=$(cat <<EOF
+    volumeMounts:
+    - mountPath: ${NFS_MOUNT_PATH}
+      name: shared-volume
+EOF
+)
+  VOLUME_BLOCK=$(cat <<EOF
+  volumes:
+  - name: shared-volume
+    persistentVolumeClaim:
+      claimName: ${sPvcNm}
+EOF
+)
+fi
+
 read -r -d '' sYamlPod <<EOF || true
 apiVersion: v1
 kind: Pod
@@ -134,32 +159,28 @@ spec:
   - name: con-${sPgmId}
     image: ${DOCKER_IMAGE}
     imagePullPolicy: IfNotPresent
-    tty: true
     env:
     - name: PYTHONUNBUFFERED
       value: "True"
     resources:
+      requests:
+        cpu: ${NEEDED_CPU_CORES}
+        memory: "${NEEDED_MEM_GB}Gi"
       limits:
 ${GPU_LIMIT}
         cpu: ${NEEDED_CPU_CORES}
         memory: "${NEEDED_MEM_GB}Gi"
-    ports:
-    - containerPort: 22
-    volumeMounts:
-    - mountPath: /home/jupyter
-      name: pvc-volume
+${VOLUME_MOUNT_BLOCK}
     command: ["/bin/bash", "-c", "--"]
     args: ["${CMD_EXECUTED_IN_POD}"]
-  volumes:
-  - name: pvc-volume
-    persistentVolumeClaim:
-      claimName: ${sPvcNm}
+${VOLUME_BLOCK}
   restartPolicy: Never
 EOF
 
 print_manifest() {
   local title="$1"
   local body="$2"
+  [[ -n "$body" ]] || return 0
   echo "===== $title =====" | tee -a "$LOG_TMP_FILE"
   echo "$body" | tee -a "$LOG_TMP_FILE"
 }
@@ -177,25 +198,25 @@ echo "KUBECONFIG=$KUBECONFIG" | tee -a "$LOG_TMP_FILE"
 echo "CONTEXT=$(kubectl config current-context)" | tee -a "$LOG_TMP_FILE"
 
 cleanup() {
+  [[ "$KEEP_RESOURCES" == "1" ]] && return 0
   echo "$sYamlPod" | kubectl delete -f - --ignore-not-found=true >/dev/null 2>&1 || true
-  echo "$sYamlPvc" | kubectl delete -f - --ignore-not-found=true >/dev/null 2>&1 || true
-  echo "$sYamlPv" | kubectl delete -f - --ignore-not-found=true >/dev/null 2>&1 || true
+  if [[ "$USE_NFS" == "1" ]]; then
+    echo "$sYamlPvc" | kubectl delete -f - --ignore-not-found=true >/dev/null 2>&1 || true
+    echo "$sYamlPv" | kubectl delete -f - --ignore-not-found=true >/dev/null 2>&1 || true
+  fi
 }
 trap cleanup EXIT
 
-echo "$sYamlPv" | kubectl apply -f - 2>&1 | tee -a "$LOG_TMP_FILE"
-[[ ${PIPESTATUS[1]} -eq 0 ]] || exit 1
+if [[ "$USE_NFS" == "1" ]]; then
+  echo "$sYamlPv" | kubectl apply -f - 2>&1 | tee -a "$LOG_TMP_FILE"
+  [[ ${PIPESTATUS[1]} -eq 0 ]] || exit 1
 
-echo "$sYamlPvc" | kubectl apply -f - 2>&1 | tee -a "$LOG_TMP_FILE"
-[[ ${PIPESTATUS[1]} -eq 0 ]] || exit 1
+  echo "$sYamlPvc" | kubectl apply -f - 2>&1 | tee -a "$LOG_TMP_FILE"
+  [[ ${PIPESTATUS[1]} -eq 0 ]] || exit 1
+fi
 
 echo "$sYamlPod" | kubectl apply -f - 2>&1 | tee -a "$LOG_TMP_FILE"
 [[ ${PIPESTATUS[1]} -eq 0 ]] || exit 1
-
-kubectl get pv "$sPvNm" 2>&1 | tee -a "$LOG_TMP_FILE" || true
-kubectl describe pv "$sPvNm" 2>&1 | tee -a "$LOG_TMP_FILE" || true
-kubectl get pvc "$sPvcNm" -n "$TARGET_NAMESPACE" 2>&1 | tee -a "$LOG_TMP_FILE" || true
-kubectl describe pvc "$sPvcNm" -n "$TARGET_NAMESPACE" 2>&1 | tee -a "$LOG_TMP_FILE" || true
 
 pending_count=0
 since_time="$(date --iso-8601=ns)"
