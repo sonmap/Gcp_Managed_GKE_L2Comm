@@ -6,48 +6,70 @@
 from config import (
     mk_client,
     PROJECT_ID,
-    AUTH_PATH,
     BQ_JOB_PROJECT,
     BQ_VPSH_SOURCE_PROJECT,
     BQ_VPSH_SOURCE_DATASET,
+    BQ_VPSH_SOURCE_TABLE,
     BQ_RKDG_SOURCE_PROJECT,
     BQ_RKDG_SOURCE_DATASET,
+    BQ_RKDG_SOURCE_TABLE,
     BQ_PARSE_SOURCE_PROJECT_1,
     BQ_PARSE_SOURCE_DATASET_1,
+    BQ_PARSE_SOURCE_TABLE_1,
     BQ_PARSE_SOURCE_PROJECT_2,
     BQ_PARSE_SOURCE_DATASET_2,
-    BQ_WRITE_PROJECT,
-    BQ_WRITE_DATASET,
+    BQ_PARSE_SOURCE_TABLE_2,
     BQ_READ_ONLY,
 )
-from SqlSet import SqlSet
+
+
+def _table_id(project, dataset, table):
+    if not dataset or not table:
+        return None
+    return f"{project}.{dataset}.{table}"
 
 
 def main():
-    sql = SqlSet(PROJECT_ID)
     tables = [
-        ("VPSH", f"{BQ_VPSH_SOURCE_PROJECT}.{BQ_VPSH_SOURCE_DATASET}.{sql.vpsh_inf_input_tbl_nm}"),
-        ("RKDG", f"{BQ_RKDG_SOURCE_PROJECT}.{BQ_RKDG_SOURCE_DATASET}.{sql.vpsh_risk_inf_input_tbl_nm}"),
-        ("PARSE-1", f"{BQ_PARSE_SOURCE_PROJECT_1}.{BQ_PARSE_SOURCE_DATASET_1}.{sql.vpsh_parse_input_01_tbl_nm}"),
-        ("PARSE-2", f"{BQ_PARSE_SOURCE_PROJECT_2}.{BQ_PARSE_SOURCE_DATASET_2}.{sql.vpsh_parse_input_02_tbl_nm}"),
+        ("VPSH", _table_id(
+            BQ_VPSH_SOURCE_PROJECT, BQ_VPSH_SOURCE_DATASET, BQ_VPSH_SOURCE_TABLE
+        )),
+        ("RKDG", _table_id(
+            BQ_RKDG_SOURCE_PROJECT, BQ_RKDG_SOURCE_DATASET, BQ_RKDG_SOURCE_TABLE
+        )),
+        ("PARSE-1", _table_id(
+            BQ_PARSE_SOURCE_PROJECT_1,
+            BQ_PARSE_SOURCE_DATASET_1,
+            BQ_PARSE_SOURCE_TABLE_1,
+        )),
+        ("PARSE-2", _table_id(
+            BQ_PARSE_SOURCE_PROJECT_2,
+            BQ_PARSE_SOURCE_DATASET_2,
+            BQ_PARSE_SOURCE_TABLE_2,
+        )),
     ]
 
     print(f"JOB_PROJECT={BQ_JOB_PROJECT}")
-    print(f"WRITE_TARGET={BQ_WRITE_PROJECT}.{BQ_WRITE_DATASET}")
     print(f"READ_ONLY={BQ_READ_ONLY}")
-    print(f"AUTH={'JSON:' + AUTH_PATH if AUTH_PATH else 'ADC/Workload Identity'}")
+    print("AUTH=ADC/Workload Identity")
 
-    client = mk_client(PROJECT_ID, AUTH_PATH)
+    client = mk_client(PROJECT_ID)
     try:
         v = list(client.query("SELECT 1 AS ok").result())[0]["ok"]
         print(f"[OK] query job / SELECT 1 => {v}")
 
         for label, table_id in tables:
+            if not table_id:
+                print(f"[SKIP] {label}: dataset/table not supplied")
+                continue
             try:
                 table = client.get_table(table_id)
                 print(f"[OK] {label}: {table_id} rows={table.num_rows}")
             except Exception as exc:
-                print(f"[FAIL] {label}: {table_id}: {type(exc).__name__}: {exc}")
+                print(
+                    f"[FAIL] {label}: {table_id}: "
+                    f"{type(exc).__name__}: {exc}"
+                )
     finally:
         client.close()
 
