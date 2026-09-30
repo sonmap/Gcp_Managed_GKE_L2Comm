@@ -1,0 +1,5 @@
+# Sanitized test environment
+BQ_JOB_PROJECT=gcp-prod-edp-edge-509423
+BQ_SOURCE_PROJECT=pjt-c-admin
+BQ_SOURCE_DATASET=l2comm_test
+BQ_SOURCE_TABLE=sample_input
