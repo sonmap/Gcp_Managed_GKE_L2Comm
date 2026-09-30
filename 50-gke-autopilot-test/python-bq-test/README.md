@@ -1,18 +1,26 @@
 # Python BigQuery smoke test for GKE Autopilot
 
-목적: 기존 Python 소스가 참조하는 BigQuery 프로젝트/데이터셋을 운영 변경 없이 읽기 전용으로 점검한다.
+목적: 신규 Autopilot Pod에서 **인증과 타 프로젝트 BigQuery 접근 권한만** 안전하게 점검한다.
 
-## AS-IS에서 확인된 BigQuery 위치
+## 보안 원칙
 
-- Query job / 기본 project: `gcp-prod-edp-lake`
-- VPSH source: `gcp-prod-edp-lake.DLKL2RSVP.L2VP_VPSH_ANAL_MART_H`
-- RKDG source: `gcp-prod-edp-lake.DLKT2RSVP.L2VP_RKDG_CALL_SMS_TRAIN_MART_TMP`
-- PARSE source 1: `gcp-prod-edp-lake.DLKVW.LOHW_TB_VPSH_DCL_INFO`
-- PARSE source 2: `gcp-sbx-edp-rsvp.DLKVWE.LOHW_TB_VPSH_DCL_INFO_CZ`
+- 운영/고객 프로젝트명은 소스에 저장하지 않는다.
+- 서비스 계정 JSON key 경로를 소스에 저장하지 않는다.
+- ADC / Workload Identity만 사용한다.
+- 데이터셋/테이블명은 Git에 커밋하지 않고 실행 시 환경변수로만 전달한다.
+- 기본값은 `BQ_READ_ONLY=1`이며 DROP/WRITE 검증은 수행하지 않는다.
 
-기존 `config.py`의 `/home/jupyter/.oef` JSON key 의존성은 신규 Autopilot에서 사용하지 않는 것을 기본으로 한다. `BQ_AUTH_PATH`가 비어 있으면 ADC / Workload Identity를 사용한다.
+## 프로젝트 기본값
 
-## 테스트
+```text
+Query Job Project     : gcp-prod-edp-edge-509423
+VPSH Source Project   : pjt-c-admin
+RKDG Source Project   : pjt-c-admin
+PARSE Source Project1 : pjt-c-admin
+PARSE Source Project2 : gcp-prod-edp-hub-vpchost
+```
+
+## 1. 인증/Query Job만 확인
 
 ```bash
 cd ~/Gcp_Managed_GKE_L2Comm/50-gke-autopilot-test/python-bq-test
@@ -25,26 +33,32 @@ python3 -m pip install --user google-cloud-bigquery google-auth pyarrow
 python3 bq_smoke_test.py
 ```
 
-`BQ_READ_ONLY=1`이 기본이므로 DROP/WRITE 테스트는 하지 않는다.
+데이터셋/테이블을 지정하지 않으면 `SELECT 1`만 수행되고 개별 테이블 검사는 `[SKIP]` 된다.
 
-예상 출력:
+## 2. 실제 테이블 읽기 확인
 
-```text
-JOB_PROJECT=gcp-prod-edp-edge-509423
-AUTH=ADC/Workload Identity
-[OK] query job / SELECT 1 => 1
-[OK] VPSH: ...
-[OK] RKDG: ...
-[OK] PARSE-1: ...
-[OK] PARSE-2: ...
+실제 식별자는 **쉘에서만 설정**하고 Git에는 커밋하지 않는다.
+
+```bash
+export BQ_VPSH_SOURCE_DATASET="<dataset>"
+export BQ_VPSH_SOURCE_TABLE="<table>"
+
+export BQ_RKDG_SOURCE_DATASET="<dataset>"
+export BQ_RKDG_SOURCE_TABLE="<table>"
+
+export BQ_PARSE_SOURCE_DATASET_1="<dataset>"
+export BQ_PARSE_SOURCE_TABLE_1="<table>"
+
+export BQ_PARSE_SOURCE_DATASET_2="<dataset>"
+export BQ_PARSE_SOURCE_TABLE_2="<table>"
+
+python3 bq_smoke_test.py
 ```
 
-`SELECT 1` 실패 시 신규 Autopilot Pod의 Google IAM / Workload Identity부터 확인한다. 특정 table만 FAIL이면 해당 source dataset에 Data Viewer 권한을 확인한다.
-
-## 필요한 권한 방향
+## 필요한 IAM 방향
 
 - `gcp-prod-edp-edge-509423`: BigQuery Job User
-- source datasets/projects: BigQuery Data Viewer
-- 쓰기 테스트를 나중에 할 경우 `DLKT2RSVP_TEST` 데이터셋에만 Data Editor 권한 부여
+- `pjt-c-admin`: 필요한 Dataset에 BigQuery Data Viewer
+- `gcp-prod-edp-hub-vpchost`: 필요한 Dataset에 BigQuery Data Viewer
 
-운영 `DLKT2RSVP`에 직접 쓰기 테스트하지 않는다.
+쓰기 테스트는 현재 단계에서 하지 않는다.
