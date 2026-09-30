@@ -1,8 +1,7 @@
 #!/bin/bash
 
-# Test copy of AS-IS run-gke.sh.
-# Business call shape is kept, but CLIENT_GKE / CLIENT_COMMON / DOCKER_IMAGE
-# can be overridden so this file can be tested from the repository.
+# Generic test wrapper for Standard -> Autopilot target switching.
+# No customer-specific image, program ID, project, or storage path is stored here.
 
 function print_usage() {
   echo "Usage: $0 <FROM_YYYYMMDD> <TO_YYYYMMDD> <CURR_YYYYMMDD> <CURR_HHMISS> <GPU> <CPU> <MEM_GB> <WORKING_DIRECTORY> <PROGRAM_PATH> [PROGRAM_PARAM ...]"
@@ -18,30 +17,22 @@ export TO_BASE_YMD="$1"; shift
 export CURR_YMD="$1"; shift
 export CURR_TIME="$1"; shift
 export VM_GPU="${1:-0}"; shift
-export VM_CPU="${1:-4}"; shift
-export VM_MEM="${1:-256}"; shift
+export VM_CPU="${1:-1}"; shift
+export VM_MEM="${1:-2}"; shift
 export WORKING_DIRECTORY="$1"; shift
 export PROGRAM_PATH="$1"; shift
 export PROGRAM_PARAM="$*"
 
-export F_YYYY="${FROM_BASE_YMD:0:4}"
-export F_MM="${FROM_BASE_YMD:4:2}"
-export F_DD="${FROM_BASE_YMD:6:2}"
-export T_YYYY="${TO_BASE_YMD:0:4}"
-export T_MM="${TO_BASE_YMD:4:2}"
-export T_DD="${TO_BASE_YMD:6:2}"
-export C_YYYY="${CURR_YMD:0:4}"
-export C_MM="${CURR_YMD:4:2}"
-export C_DD="${CURR_YMD:6:2}"
-export C_HH="${CURR_TIME:0:2}"
-export C_MI="${CURR_TIME:2:2}"
-export C_SS="${CURR_TIME:4:2}"
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLIENT_COMMON="${CLIENT_COMMON:-/ssw/dlk/client_common}"
 CLIENT_GKE="${CLIENT_GKE:-/ssw/dlk/client_gke}"
-PROGRAM_ID="${PROGRAM_ID:-GP_L2RSVP_001_1}"
-DOCKER_IMAGE="${DOCKER_IMAGE:-asia-northeast3-docker.pkg.dev/gcp-prod-edp-edge/dlk/lgplus-deeplearning:2.3-rsvp-rsvp-001-1}"
+PROGRAM_ID="${PROGRAM_ID:-AUTOPILOT_TEST_001}"
+DOCKER_IMAGE="${DOCKER_IMAGE:-}"
+
+if [[ -z "$DOCKER_IMAGE" ]]; then
+  echo "DOCKER_IMAGE is required. Export a test image URI at runtime." >&2
+  exit 2
+fi
 
 if [[ ! -r "$CLIENT_COMMON" ]]; then
   echo "CLIENT_COMMON not readable: $CLIENT_COMMON" >&2
