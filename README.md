@@ -592,3 +592,48 @@ Job Complete 1/1
 ```
 
 현재 PoC 기준 **CI/CD 자동 Build + Scheduler + Workflow + GKE Job + BigQuery 적재까지 End-to-End 검증 완료** 상태입니다.
+
+
+---
+
+# 16. 전체 삭제 / 초기화 (90-destroy)
+
+기존 PoC를 정리하거나 L2Comm02로 전환할 때는 `90-destroy`를 사용합니다.
+
+## Platform 삭제
+
+```bash
+cd ~/Gcp_Managed_GKE_L2Comm
+git pull
+
+bash 90-destroy/destroy-all.sh platform
+```
+
+삭제 순서:
+
+```text
+Cloud Scheduler pause/delete
+   ↓
+Infrastructure Manager 관리 리소스 확인
+   ↓
+l2comm-platform Deployment delete
+   ↓
+GKE / Artifact Registry / SA / IAM / Workflow / Trigger 삭제
+```
+
+## Network까지 삭제
+
+```bash
+bash 90-destroy/destroy-all.sh full
+```
+
+`full` 모드는 위 Platform 삭제 후 `terraform/10-network`의 state를 확인하고
+`terraform plan -destroy` / `terraform apply`를 수행합니다.
+
+> `00-bootstrap`은 L2Comm02 재구축에 재사용할 수 있으므로 자동 삭제하지 않습니다.
+
+상세 내용:
+
+```text
+90-destroy/README.md
+```
