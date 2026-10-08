@@ -1,0 +1,31 @@
+#!/bin/bash
+
+RET_VAL=0
+
+function action_title() {
+  echo "[client_common.test] action_title"
+}
+
+function log_init() {
+  echo "[client_common.test] log_init: $*"
+}
+
+function log_act_init() {
+  echo "[client_common.test] log_act_init: $*"
+}
+
+function chk_ret() {
+  RET_VAL="$1"
+  if [[ "$RET_VAL" -ne 0 ]]; then
+    echo "[client_common.test] command failed: rc=$RET_VAL" >&2
+  fi
+  return "$RET_VAL"
+}
+
+function log_success() {
+  if [[ "${RET_VAL:-0}" -eq 0 ]]; then
+    echo "[client_common.test] SUCCESS"
+  else
+    echo "[client_common.test] FAILED rc=$RET_VAL" >&2
+  fi
+}
