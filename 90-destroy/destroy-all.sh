@@ -82,6 +82,17 @@ fi
 
 echo
 echo "[4/5] Infra Manager Deployment 삭제"
+
+# google_workflows_workflow has Terraform deletion_protection=true by default
+# when the field was omitted in the historical state. Delete the Workflow
+# directly first so a partially completed Infra Manager destroy can continue.
+if gcloud workflows describe "$WORKFLOW_NAME"     --project="$PROJECT_ID"     --location="$LOCATION" >/dev/null 2>&1; then
+  echo "Workflow 선삭제: $WORKFLOW_NAME"
+  gcloud workflows delete "$WORKFLOW_NAME"     --project="$PROJECT_ID"     --location="$LOCATION"     --quiet
+else
+  echo "Workflow 없음 - skip"
+fi
+
 if [[ "$DEPLOYMENT_EXISTS" == "yes" ]]; then
   set +e
   DELETE_OUTPUT="$(gcloud infra-manager deployments delete "$DEPLOYMENT_FULL_NAME" --quiet 2>&1)"
