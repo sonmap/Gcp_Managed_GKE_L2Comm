@@ -206,9 +206,10 @@ locals {
 }
 
 resource "google_workflows_workflow" "gke_batch" {
-  project         = var.edge_project_id
-  region          = var.region
-  name            = var.workflow_name
+  project             = var.edge_project_id
+  region              = var.region
+  name                = var.workflow_name
+  deletion_protection = false
   description     = "Create and wait for the L2Comm Kubernetes Job on GKE Autopilot"
   service_account = google_service_account.workflow.email
 
