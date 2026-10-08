@@ -5,6 +5,7 @@ PROJECT_ID="gcp-prod-edp-edge-509423"
 LOCATION="asia-northeast3"
 DEPLOYMENT_ID="l2comm-platform"
 SCHEDULER_JOB="sch-l2comm-gke-job"
+WORKFLOW_NAME="wf-l2comm-gke-job"
 
 MODE="${1:-platform}"
 
@@ -82,7 +83,36 @@ fi
 echo
 echo "[4/5] Infra Manager Deployment 삭제"
 if [[ "$DEPLOYMENT_EXISTS" == "yes" ]]; then
-  gcloud infra-manager deployments delete "$DEPLOYMENT_FULL_NAME" --quiet
+  set +e
+  DELETE_OUTPUT="$(gcloud infra-manager deployments delete "$DEPLOYMENT_FULL_NAME" --quiet 2>&1)"
+  DELETE_RC=$?
+  set -e
+
+  echo "$DELETE_OUTPUT"
+
+  if [[ $DELETE_RC -ne 0 ]]; then
+    if echo "$DELETE_OUTPUT" | grep -q "cannot destroy workflow without setting deletion_protection=false"; then
+      echo
+      echo "Workflow Terraform deletion_protection으로 삭제가 중단되었습니다."
+      echo "현재 destroy는 이미 일부 자원을 삭제했으므로 기존 Deployment를 재-apply하지 않습니다."
+      echo "Workflow만 API로 직접 삭제한 뒤 Infra Manager delete를 재시도합니다."
+
+      if gcloud workflows describe "$WORKFLOW_NAME"           --project="$PROJECT_ID"           --location="$LOCATION" >/dev/null 2>&1; then
+        gcloud workflows delete "$WORKFLOW_NAME"           --project="$PROJECT_ID"           --location="$LOCATION"           --quiet
+      else
+        echo "Workflow가 이미 없습니다 - skip"
+      fi
+
+      echo
+      echo "Infra Manager Deployment 삭제 재시도..."
+      gcloud infra-manager deployments delete "$DEPLOYMENT_FULL_NAME" --quiet
+    else
+      echo
+      echo "ERROR: Infra Manager Deployment 삭제 실패"
+      echo "위 Cloud Build/Terraform 오류를 확인하세요."
+      exit "$DELETE_RC"
+    fi
+  fi
 else
   echo "Deployment 없음 - skip"
 fi
